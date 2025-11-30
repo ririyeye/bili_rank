@@ -137,10 +137,7 @@ async fn fetch_online_counts(
     let completed = Arc::new(AtomicUsize::new(0));
 
     // 将 entries 转换为带索引的 Vec，用于并发处理
-    let entry_data: Vec<_> = entries
-        .iter()
-        .map(|e| (e.bvid.clone(), e.cid))
-        .collect();
+    let entry_data: Vec<_> = entries.iter().map(|e| (e.bvid.clone(), e.cid)).collect();
 
     // 存储结果
     let results: Arc<parking_lot::Mutex<HashMap<String, i64>>> =
@@ -270,11 +267,18 @@ async fn fetch_online_count_simple(
     }
 }
 
-/// 构建结果 JSON
-fn build_result_payload(entries: &[RankingEntry]) -> Value {
+/// 构建结果 JSON（按在线人数排序，取前 top_n 个）
+fn build_result_payload(entries: &[RankingEntry], top_n: usize) -> Value {
+    // 按在线人数降序排序
+    let mut sorted_entries: Vec<_> = entries.iter().collect();
+    sorted_entries.sort_by(|a, b| b.online_total.cmp(&a.online_total));
+
+    // 取前 top_n 个
+    let top_entries: Vec<_> = sorted_entries.into_iter().take(top_n).collect();
+
     let mut result = serde_json::Map::new();
 
-    for entry in entries {
+    for entry in top_entries {
         let node = json!({
             "title": entry.title,
             "owner": entry.owner_name,
@@ -305,12 +309,22 @@ pub async fn run_polling_task(state: Arc<SharedState>, args: Args) {
         info!("[bili] Starting ranking fetch...");
 
         match fetch_ranking(&client).await {
-            Some(mut entries) => {
-                let count = entries.len();
-                info!("[bili] Fetched {} ranking entries", count);
+            Some(new_entries) => {
+                let new_count = new_entries.len();
+                info!("[bili] Fetched {} new ranking entries", new_count);
+
+                // 将新排行榜加入历史记录，并获取合并去重后的列表
+                let mut merged_entries = state.push_ranking_and_merge(new_entries);
+                let merged_count = merged_entries.len();
+                let history_count = state.get_history_count();
+
+                info!(
+                    "[bili] Merged {} entries from {} history cycles",
+                    merged_count, history_count
+                );
 
                 // 设置抓取状态
-                state.set_fetching(true, count);
+                state.set_fetching(true, merged_count);
 
                 // 根据是否是首次抓取选择并发数
                 let concurrency = if state.is_initial_fetch_done() {
@@ -324,16 +338,16 @@ pub async fn run_polling_task(state: Arc<SharedState>, args: Args) {
                 // 获取在线人数
                 fetch_online_counts(
                     &client,
-                    &mut entries,
+                    &mut merged_entries,
                     &state,
                     concurrency,
                     args.log_error_json,
                 )
                 .await;
 
-                if !entries.is_empty() {
-                    // 构建并保存结果
-                    let payload = build_result_payload(&entries);
+                if !merged_entries.is_empty() {
+                    // 构建并保存结果（按人数排序，取前100）
+                    let payload = build_result_payload(&merged_entries, args.top_n);
                     let serialized = serde_json::to_string_pretty(&payload).unwrap_or_default();
 
                     // 更新状态
@@ -348,7 +362,11 @@ pub async fn run_polling_task(state: Arc<SharedState>, args: Args) {
                         }
                     }
 
-                    info!("[bili] Ranking updated, {} entries", count);
+                    info!(
+                        "[bili] Ranking updated, top {} of {} entries",
+                        args.top_n.min(merged_count),
+                        merged_count
+                    );
                 } else {
                     state.set_initial_fetch_done();
                 }

@@ -2,6 +2,7 @@
 
 use chrono::{DateTime, Utc};
 use parking_lot::RwLock;
+use std::collections::{HashMap, VecDeque};
 use std::sync::atomic::{AtomicBool, Ordering};
 
 /// 排行榜条目
@@ -14,6 +15,12 @@ pub struct RankingEntry {
     pub pic: String,
     pub cid: i64,
     pub online_total: i64,
+}
+
+/// 历史排行榜记录
+#[derive(Debug, Clone)]
+struct HistoryRanking {
+    entries: Vec<RankingEntry>,
 }
 
 /// 共享状态
@@ -31,10 +38,14 @@ struct SharedStateInner {
     pub completed_items: usize,
     pub fetching: bool,
     pub initial_fetch_done: bool,
+    /// 历史排行榜记录队列
+    pub history_rankings: VecDeque<HistoryRanking>,
+    /// 保留的历史周期数
+    pub history_cycles: usize,
 }
 
 impl SharedState {
-    pub fn new() -> Self {
+    pub fn with_history_cycles(history_cycles: usize) -> Self {
         Self {
             inner: RwLock::new(SharedStateInner {
                 json_payload: String::new(),
@@ -45,6 +56,8 @@ impl SharedState {
                 completed_items: 0,
                 fetching: false,
                 initial_fetch_done: false,
+                history_rankings: VecDeque::new(),
+                history_cycles,
             }),
             stop: AtomicBool::new(false),
         }
@@ -121,6 +134,37 @@ impl SharedState {
                 .map(format_http_date)
                 .unwrap_or_default(),
         }
+    }
+
+    /// 添加新的排行榜到历史记录，并返回合并去重后的条目列表
+    pub fn push_ranking_and_merge(&self, new_entries: Vec<RankingEntry>) -> Vec<RankingEntry> {
+        let mut inner = self.inner.write();
+
+        // 添加新的排行榜记录
+        let history = HistoryRanking {
+            entries: new_entries,
+        };
+        inner.history_rankings.push_back(history);
+
+        // 保留最近 history_cycles 个周期
+        while inner.history_rankings.len() > inner.history_cycles {
+            inner.history_rankings.pop_front();
+        }
+
+        // 合并所有历史记录，去重（保留最新的条目信息）
+        let mut merged: HashMap<String, RankingEntry> = HashMap::new();
+        for ranking in inner.history_rankings.iter() {
+            for entry in &ranking.entries {
+                merged.insert(entry.bvid.clone(), entry.clone());
+            }
+        }
+
+        merged.into_values().collect()
+    }
+
+    /// 获取当前历史记录数量
+    pub fn get_history_count(&self) -> usize {
+        self.inner.read().history_rankings.len()
     }
 }
 

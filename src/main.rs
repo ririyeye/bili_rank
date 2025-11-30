@@ -53,6 +53,14 @@ pub struct Args {
     /// 是否记录错误响应的JSON
     #[arg(long, default_value_t = false)]
     log_error_json: bool,
+
+    /// 保留的历史周期数（用于合并去重）
+    #[arg(long, default_value_t = 5)]
+    history_cycles: usize,
+
+    /// 最终输出的视频数量（按在线人数排序后取前N个）
+    #[arg(long, default_value_t = 100)]
+    top_n: usize,
 }
 
 #[tokio::main]
@@ -80,9 +88,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             "disabled"
         }
     );
+    info!(
+        "[bili] History cycles: {}, Top N: {}",
+        args.history_cycles, args.top_n
+    );
 
-    // 创建共享状态
-    let state = Arc::new(SharedState::new());
+    // 创建共享状态（带历史周期数配置）
+    let state = Arc::new(SharedState::with_history_cycles(args.history_cycles));
 
     // 克隆用于不同任务
     let crawler_state = Arc::clone(&state);
