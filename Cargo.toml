@@ -17,6 +17,7 @@ tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 futures = "0.3"
 parking_lot = "0.12"
+md5 = "0.7"
 
 [[bin]]
 name = "bili_rank"

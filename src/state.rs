@@ -8,13 +8,18 @@ use std::sync::atomic::{AtomicBool, Ordering};
 /// 排行榜条目
 #[derive(Debug, Clone)]
 pub struct RankingEntry {
+    /// 稿件 avid（BAC online 接口优先用 aid）
+    pub aid: i64,
     pub bvid: String,
     pub title: String,
     pub owner_name: String,
     pub owner_mid: String,
     pub pic: String,
     pub cid: i64,
+    /// 解析后的在线人数（用于排序）
     pub online_total: i64,
+    /// BAC `data.total` 原始文案，如 `9.4万+`
+    pub online_total_text: String,
 }
 
 /// 历史排行榜记录

@@ -9,6 +9,7 @@
 mod crawler;
 mod server;
 mod state;
+mod wbi;
 
 use clap::Parser;
 use std::sync::Arc;

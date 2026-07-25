@@ -14,11 +14,19 @@
 
 ## 工作流程
 
+接口对齐 [bilibili-API-collect](https://github.com/SocialSisterYi/bilibili-API-collect) 文档约定：
+
 ```
 ┌─────────────────────────────────────────────────────────────┐
+│  Step 0: 获取 WBI 密钥                                       │
+│  GET /x/web-interface/nav → img_key / sub_key                │
+│  （见 BAC docs/misc/sign/wbi.md）                            │
+└─────────────────────────┬───────────────────────────────────┘
+                          ▼
+┌─────────────────────────────────────────────────────────────┐
 │  Step 1: 获取当前排行榜                                      │
-│  调用 B站排行榜 API 获取本轮排行榜视频列表                    │
-│  URL: /x/web-interface/ranking/v2?rid=0&type=all            │
+│  GET /x/web-interface/ranking/v2                             │
+│  参数: rid=0&type=all&web_location=333.934 + wts/w_rid       │
 └─────────────────────────┬───────────────────────────────────┘
                           ▼
 ┌─────────────────────────────────────────────────────────────┐
@@ -30,8 +38,8 @@
                           ▼
 ┌─────────────────────────────────────────────────────────────┐
 │  Step 3: 并发获取在线人数                                    │
-│  对合并后的所有视频并发请求在线人数                           │
-│  URL: /x/player/online/total?bvid={}&cid={}                 │
+│  GET /x/player/online/total?aid={}&cid={}                    │
+│  （无 aid 时回退 bvid+cid；取 data.total）                   │
 │                                                             │
 │  🚀 首轮并发数: rapid_concurrency (默认 20)                  │
 │  🐢 后续并发数: normal_concurrency (默认 5)                  │
@@ -128,6 +136,7 @@ cargo build --release
 ```json
 {
   "BV1xxxxxxxxxx": {
+    "aid": 123456789,
     "title": "视频标题",
     "owner": "UP主名称",
     "mid": "UP主ID",
